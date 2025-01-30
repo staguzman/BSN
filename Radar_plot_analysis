@@ -1,0 +1,107 @@
+start <- Sys.time()
+message(" \n Running Radar plot analysis... \n ")
+
+library(librarian)
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Read in the files.
+prop_hpo_bsn_joint <- read.csv("prop_hpo_bsn_full.csv",stringsAsFactors = F)
+bsn_group_circ_n_terms <-read.csv("bsn_group_circ_n_terms.csv",stringsAsFactors = F)
+
+# Obtain ID's for all groups and create prop tables
+
+# Example here, de novo variant group (n = 14)
+prop_hpo_bsn_denovo <- prop_hpo_bsn_joint %>% 
+  filter(STUDY_ID %in% BSN_denovo_ID$STUDY_ID)
+
+prop_hpo_bsn_denovo$STUDY_ID %>% unique() %>% length()
+
+# Create phen tables for all groups to obtain frequency of prop and base phenotypes
+
+bsn_phen_joint <- prop_hpo_bsn_joint %>% 
+  select(STUDY_ID, HPO_ID, ancs_def ) %>% 
+  unique() %>% 
+  dplyr::group_by(HPO_ID,ancs_def) %>% 
+  dplyr::summarize(n= n()) %>% 
+  mutate(freq = n/29) %>% 
+  arrange(-n) 
+
+# Continue with the rest of phen tables for the rest of the groups for Prop terms
+# Combine all groups into one table and repeat with base terms
+
+bsn_phen_group_tbl
+
+# Selecting top terms only
+bsn_phen_group_tbl_radar <- bsn_phen_group_tbl %>% 
+  filter(
+    ancs_def == "Seizure" |
+      ancs_def == "Abnormal nervous system physiology" |
+      ancs_def == "Abnormality of the nervous system" |
+      ancs_def == "Neurodevelopmental abnormality" |
+      ancs_def == "Atypical behavior" |
+      ancs_def == "Global developmental delay" |
+      ancs_def == "Recurrent maladaptive behavior" |
+      ancs_def == "Specific learning disability" |
+      ancs_def == "Abnormality of the musculoskeletal system" |
+      ancs_def == "Delayed speech and language development" |
+      ancs_def == "Abnormality of mental function" |
+      ancs_def == "Growth abnormality" |
+      ancs_def == "Disinhibition" |
+      ancs_def == "Hyperactivity" |
+      ancs_def == "Gait disturbance" |
+      ancs_def == "Short attention span" |
+      ancs_def == "Abnormal cardiovascular system physiology" |
+      ancs_def == "Abnormality of the respiratory system" |
+      ancs_def == "Obesity")
+
+bsn_phen_group_tbl_radar <- left_join(bsn_phen_group_tbl_radar, bsn_group_circ_n_terms, by = "HPO_ID")
+
+bsn_phen_group_tbl_radar <- bsn_phen_group_tbl_radar %>% 
+  select(ancs_def = ancs_def.x, HPO_ID, Parent, freq_joint,freq_SGG_PTV,freq_PTV_CAG,freq_denovo, freq_CAG, freq_PMBB)
+
+bsn_phen_group_tbl_radar <- as.data.frame(bsn_phen_group_tbl_radar)
+
+bsn_phen_group_tbl_radar <- bsn_phen_group_tbl_radar %>% 
+  arrange(Parent)
+bsn_phen_group_tbl_radar$ancs_def <- factor(bsn_phen_group_tbl_radar$ancs_def, unique(bsn_phen_group_tbl_radar$ancs_def))
+
+
+ggplot(bsn_phen_group_tbl_radar) +
+  geom_col(
+    aes(
+      x = fct_inorder(str_wrap(ancs_def, 5)),
+      y = freq_joint,
+      fill = ancs_def
+    ),
+    position = "identity",
+    show.legend = TRUE,
+    alpha = .9
+  ) + 
+  coord_polar(clip = "off") +
+  scale_y_continuous(limits =c(0,1), breaks=c(0,0.25,0.5,0.75,1))+
+  
+  labs(
+    title = "\nJoint (n=29)",
+    y="Frequency"
+  )+
+  theme(
+    
+    axis.text.x = element_blank(),
+    axis.title.y = element_blank() ,
+    axis.ticks.y = element_blank() ,
+    axis.text.y = element_blank() ,
+    axis.title.x = element_blank(),
+    panel.background = element_rect(fill = "white", color = "white"),
+    panel.grid.major = element_line(color = "grey60"),
+    panel.grid.minor.y = element_blank(),
+    legend.position = "blank"
+    
+  )
+
+message("\n  ...Radar plot analysis complete \n ")
+stop = Sys.time()
+stop - start

@@ -1,0 +1,56 @@
+# Creating BSN prop and base tables
+
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Read in files
+BSN_phen_main <- read_csv("base_full_BSN_geno_pheno.csv", na = ".")
+hpo_def <- read_csv("hpo_ancs_def.csv", na = ".")
+hpo_ancs <- read_csv("hpo_ancs_main.csv", na = ".")
+
+# Base terms
+base_hpo_bsn_full <- base_hpo_bsn_full |>
+  select (STUDY_ID, HPO_ID, HPO_def)
+
+# Some rows have multiple values lets split those rows, in this case they did not
+base_hpo_bsn_full <- base_hpo_bsn_full %>% separate_rows(HPO_ID,sep=';')
+base_hpo_bsn_full <- base_hpo_bsn_full %>% filter(HPO_ID != "")
+head(base_hpo_bsn_full)
+
+base_hpo_bsn_full <- base_hpo_bsn_full %>%  select(STUDY_ID,HPO_ID,HPO_def)
+head(base_hpo_bsn_full)
+
+dim(base_hpo_bsn_full)
+
+base_hpo_bsn_full <- base_hpo_bsn_full %>%  unique()
+dim(base_hpo_bsn_full)
+
+# Prop terms
+prop_hpo_bsn_full <- base_hpo_bsn_full %>% left_join(hpo_ancs,by=c("HPO_ID"="HPO"))
+head(prop_hpo_bsn_full)
+
+
+prop_hpo_bsn_full <- prop_hpo_bsn_full %>% separate_rows(ancs,sep=";")
+head(prop_hpo_bsn_full)
+
+prop_hpo_bsn_full <- prop_hpo_bsn_full %>% left_join(hpo_def,by=c("ancs"="HPO"))
+head(prop_hpo_bsn_full)
+
+prop_hpo_bsn_full <- prop_hpo_bsn_full %>% transmute(STUDY_ID,HPO_ID = ancs , ancs_def= definition.y)
+
+prop_hpo_bsn_full_main <- prop_hpo_bsn_full %>% 
+  select(STUDY_ID, HPO_ID, ancs_def) %>% 
+  unique()
+
+dim(prop_hpo_bsn_full)
+
+-----------
+
+write.csv(base_hpo_bsn_full,"base_hpo_bsn_full.csv",row.names = F)
+write.csv(prop_hpo_bsn_full,"prop_hpo_bsn_full.csv",row.names = F)
+
+
+

@@ -1,0 +1,65 @@
+start <- Sys.time()
+message(" \n Running longitudinal analysis... \n ")
+
+library(librarian)
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(ggrepel)
+
+# Read in the files.
+BSN_SGG_CAG_PMBB_bf <- read.csv("BSN_SGG_CAG_PMBB_bf_PTV.csv",stringsAsFactors = F)
+
+# for each individual get first and last encounter
+first_enc_joint_all_HPO <- BSN_SGG_CAG_PMBB_bf %>% 
+  group_by(STUDY_ID) %>% 
+  summarise(first_enc = min(age_y,na.rm = T)) # lists first encounter for each individual
+
+last_enc_joint_all_HPO  <- BSN_SGG_CAG_PMBB_bf %>% 
+  group_by(STUDY_ID) %>% 
+  summarise(last_enc = max(age_y,na.rm = T)) # lists last encounter for each individual
+
+BSN_CAG_PMBB_bf_rank <- BSN_SGG_CAG_PMBB_bf %>% 
+  arrange(age_y) %>%
+  mutate(rank = seq(STUDY_ID))
+
+enc_table_joint_all_HPO <- first_enc_joint_all_HPO %>% left_join(last_enc_joint_all_HPO,by="STUDY_ID")
+
+BSN_CAG_PMBB_bf_V2_rank_PTV <-BSN_CAG_PMBB_bf_V2_rank_PTV %>% 
+  arrange(age_y)
+
+message(paste0('Numbers from the data provided :\n ',
+               length(unique(BSN_CAG_PMBB_bf_rank$STUDY_ID)),'\tIndividuals \n',
+               round(sum(enc_table_joint_all_HPO$last_enc) - sum(enc_table_joint_all_HPO$first_enc)) ,'\tPatient years.\n')) 
+
+# Numbers from the data provided :
+# 12	Individuals 
+# 103	Patient years
+
+
+BSN_CAG_PMBB_bf_HPO <- BSN_CAG_PMBB_bf_rank %>% left_join(new_hpo_name,by=c("HPO_ID"="id"))
+
+BSN_CAG_PMBB_bf_main <- BSN_CAG_PMBB_bf_HPO %>% 
+  arrange(age_m) %>% 
+  unique()
+
+BSN_CAG_PMBB_bf_main$STUDY_ID <- factor(BSN_CAG_PMBB_bf_main$STUDY_ID, unique(BSN_CAG_PMBB_bf_main$STUDY_ID))
+
+ggplot(data= BSN_CAG_PMBB_bf_main %>% arrange(Type_main),aes(x=age_y,y=STUDY_ID, color= Type_main, size= 8)) + 
+  geom_point( size=8, alpha = .5)+ 
+  scale_color_manual(values=c("red", "darkgrey"))+
+  xlab("") + # label x-axis
+  ylab("") + # label y-axis
+  theme_classic() + # other base themes are linedraw, bw, minimal etc 
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y =element_blank()  )# theme has lots of options - look into it.
+ggsave("BSN_beachflag_plot.png", dpi = 500, width = 9, height = 5)
+
+
+message("\n  ...Longitudinal analysis complete\n ")
+stop = Sys.time()
+stop - start
+
+

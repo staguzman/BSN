@@ -1,0 +1,171 @@
+start <- Sys.time()
+message(" \n Running phenotypic association analysis... \n ")
+
+library(librarian)
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(ggrepel)
+
+
+# Read in the files.
+prop_hpo_bsn_joint <- read.csv("prop_hpo_bsn_full.csv",stringsAsFactors = F)
+prop_hpo_others <- read.csv("prop_hpo_others.csv")
+
+
+prop_hpo_bsn_joint$STUDY_ID %>% unique() %>% length()
+#n=29
+
+# Filter for BSN individuals 
+prop_hpo_bsn_joint_all <- prop_hpo_bsn_joint  %>% 
+  mutate(Gene= 'BSN') %>% 
+  select(STUDY_ID, HPO_ID, ancs_def, Gene)
+
+# Bind groups 
+pats_gene_joint_all <- rbind(prop_hpo_others, prop_hpo_bsn_joint_all) 
+
+
+pats_gene_filtered_HPO_joint_all <- pats_gene_joint_all %>% 
+  pull(HPO_ID) %>% 
+  unique()
+
+
+pats_joint_all <- pats_gene_joint_all %>% 
+  filter(Gene== "BSN") %>% 
+  pull(STUDY_ID) %>%
+  unique()
+
+yesg_hpo_joint_all <- pats_gene_joint_all %>% 
+  filter(STUDY_ID %in% pats_joint_all) %>% 
+  distinct()
+
+nog_hpo_joint_all <- pats_gene_joint_all %>% 
+  filter(! STUDY_ID %in% pats_joint_all) %>% 
+  distinct()
+
+nog_pats_joint_all <- nog_hpo_joint_all %>% pull(STUDY_ID) %>% unique()
+
+y_hpo_count_joint_all <- yesg_hpo_joint_all %>% 
+  count(HPO_ID)
+n_hpo_count_joint_all <- nog_hpo_joint_all %>% 
+  count(HPO_ID)
+
+#this is changes to nrow=length
+hpo_volcano_joint_all <- matrix(nrow=length(pats_gene_filtered_HPO_joint_all), ncol=9) %>% as.data.frame()
+
+names(hpo_volcano_joint_all) <- c('HPO','gene','pval',"yes_freq", "no_freq","OR",
+                                  "OR_adjusted","CI_lower","CI_upper")
+hpo_volcano_joint_all$HPO <- pats_gene_filtered_HPO_joint_all
+hpo_volcano_joint_all$gene <- "BSN"
+
+for(h in 1:nrow(hpo_volcano_joint_all)){
+  hp_joint_all <- hpo_volcano_joint_all$HPO[h] %>% as.character()
+  
+  fish_joint_all <- matrix(ncol=2,nrow=2) %>% as.data.frame()
+  names(fish_joint_all) <- c('hpo_present','hpo_absent')
+  row.names(fish_joint_all) <- c('gene_present','gene_absent')
+  
+  
+  #changed here 
+  if(hp_joint_all %in% y_hpo_count_joint_all$HPO_ID){ #added
+    
+    fish_joint_all$hpo_present[1] <- y_hpo_count_joint_all %>%
+      filter(HPO_ID == hp_joint_all) %>%
+      pull(n)
+  }else{ ##
+    fish_joint_all$hpo_present[1] <- 0 ##
+  }##
+  
+  hpo_volcano_joint_all$yes_freq[h] <- fish_joint_all$hpo_present[1]/length(unique(pats_joint_all)) ## make sure to use the length of the correct # of pats
+  
+  fish_joint_all$hpo_absent[1] <- length(pats_joint_all)  - fish_joint_all$hpo_present[1]
+  
+  OR_n_joint_all <- fish_joint_all$hpo_present[1]/fish_joint_all$hpo_absent[1]
+  
+  
+  if(hp_joint_all %in% n_hpo_count_joint_all$HPO_ID){
+    fish_joint_all$hpo_present[2] <- n_hpo_count_joint_all %>%
+      filter(HPO_ID == hp_joint_all) %>%
+      pull(n)
+    hpo_volcano_joint_all$no_freq[h] <- fish_joint_all$hpo_present[2]/length(unique(nog_hpo_joint_all$STUDY_ID)) 
+  }else{
+    fish_joint_all$hpo_present[2] <- 0 
+  }
+  
+  fish_joint_all$hpo_absent[2] <- length(nog_pats_joint_all) - fish_joint_all$hpo_present[2]
+  ftest_joint_all = fisher.test(fish_joint_all)
+  hpo_volcano_joint_all$pval[h] <- ftest_joint_all$p.value
+  
+  hpo_volcano_joint_all$CI_lower[h] <- ftest_joint_all$conf.int[1]
+  hpo_volcano_joint_all$CI_upper[h] <- ftest_joint_all$conf.int[2]
+  
+  #Calc OR
+  OR_d_joint_all <- fish_joint_all$hpo_present[2]/fish_joint_all$hpo_absent[2]
+  
+  if(OR_d_joint_all == 0){
+    OR_d_adj_joint_all = 1/(length(nog_pats_joint_all) - 1)
+  } else {
+    OR_d_adj_joint_all = OR_d_joint_all
+  }
+  
+  hpo_volcano_joint_all$OR[h] <- OR_n_joint_all/OR_d_joint_all
+  hpo_volcano_joint_all$OR_adjusted[h] <- OR_n_joint_all/OR_d_adj_joint_all
+  
+}
+
+hpo_volcano_joint_all <- as.data.frame(hpo_volcano_joint_all)
+names(hpo_volcano_joint_all) <- c('HPO_ID','gene','pval',"yes_freq", "no_freq","OR",
+                                  "OR_adjusted","CI_lower","CI_upper")
+hpo_volcano_joint_all <- hpo_volcano_joint_all %>% left_join(pats_gene_joint_all %>% select(2,3) %>% unique)
+
+hpo_volcano_joint_all$pval <- as.character(hpo_volcano_joint_all$pval) %>% as.numeric()
+
+hpo_volcano_joint_all$yes_freq <- as.character(hpo_volcano_joint_all$yes_freq) %>% as.numeric()
+hpo_volcano_joint_all$no_freq <- as.character(hpo_volcano_joint_all$no_freq) %>% as.numeric()
+hpo_volcano_joint_all$OR <- as.character(hpo_volcano_joint_all$OR) %>% as.numeric()
+hpo_volcano_joint_all$OR_adjusted <- as.character(hpo_volcano_joint_all$OR_adjusted) %>% as.numeric()
+hpo_volcano_joint_all$CI_lower <- as.character(hpo_volcano_joint_all$CI_lower) %>% as.numeric()
+hpo_volcano_joint_all$CI_upper <- as.character(hpo_volcano_joint_all$CI_upper) %>% as.numeric()
+
+hpo_volcano_joint_all_v <- hpo_volcano_joint_all
+
+hpo_volcano_joint_all_v$OR[hpo_volcano_joint_all$OR==0]= NA
+hpo_volcano_joint_all_v <- hpo_volcano_joint_all %>%
+  filter(!grepl('Inf', OR))
+
+hpo_volcano_joint_all_v <- hpo_volcano_joint_all_v %>%
+  mutate(sig = case_when((pval < 0.01  & OR < 1) ~ "significant_other",
+                         (pval < 0.01 & OR > 1) ~ "significant_main",
+                         T ~ "NOT"))
+
+ggplot(data=hpo_volcano_joint_all_v , aes(x=log2(OR), y=-log10(pval)))+
+  geom_point(data = hpo_volcano_joint_all_v,
+            aes(size = yes_freq, label=ancs_def, color= sig))+
+  scale_color_manual(values = c("significant_other" = "steelblue", "significant_main"= "red","NOT" = "grey"))+
+  scale_size_area(max_size = 10)+
+  scale_x_continuous(limits = c(-5,10)) +
+  geom_vline(xintercept = -1, linetype= 'dotted')+
+  geom_vline(xintercept = 1, linetype= 'dotted')+
+  geom_hline(yintercept = -log10(0.01), linetype= 'dotted')+ #use 0.5 if not enought data
+  geom_label_repel(data = hpo_volcano_joint_all_v_terms,
+                   mapping = aes(label=ancs_def),
+                   direction="both", size = 2,
+                   point.padding = 0.12, box.padding = 0.2,
+                   show.legend = F,segment.size = 0.3,
+                   max.iter = 35000, colour = "black",
+                   force = 15) +
+  xlab("log2(OR)") + 
+  ylab("-log10(pval)") +
+  theme_classic() +
+  theme(text = element_text(size = 10),plot.title = ggtext::element_markdown(),
+        legend.position = "none")
+ggsave("volcano_plot.png", dpi = 500, width = 20, height = 15)
+
+
+message("\n  ...phenotypic association analysis complete \n ")
+stop = Sys.time()
+stop - start
+
+
